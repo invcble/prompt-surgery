@@ -1,0 +1,125 @@
+diff --git a/packages/opencode/src/session/llm/request.ts b/packages/opencode/src/session/llm/request.ts
+index e000d6c..18e915e 100644
+--- a/packages/opencode/src/session/llm/request.ts
++++ b/packages/opencode/src/session/llm/request.ts
+@@ -14,9 +14,102 @@ import { Effect, Record } from "effect"
+ import { jsonSchema, tool as aiTool, type ModelMessage, type Tool } from "ai"
+ import type { Plugin } from "@/plugin"
+ import { mergeDeep } from "remeda"
++import * as nodeFS from "node:fs"
++import * as nodePath from "node:path"
+ 
+ const USER_AGENT = `opencode/${InstallationVersion}`
+ 
++// ---- PROMPT SURGERY: dump the fully-assembled request, then abort before any HTTP call ----
++const DUMP_DIR = process.env["PROMPT_DUMP_DIR"]
++
++function dumpPrepared(input: PrepareInput, prepared: Prepared) {
++  if (!DUMP_DIR) return
++  nodeFS.mkdirSync(DUMP_DIR, { recursive: true })
++  const tools = prepared.tools as Record<string, any>
++  const toolEntries = Object.entries(tools).map(([name, t]) => ({
++    name,
++    description: t?.description ?? null,
++    inputSchema: t?.inputSchema?.jsonSchema ?? t?.inputSchema ?? null,
++  }))
++
++  const md: string[] = []
++  const section = (title: string, body: string) =>
++    md.push(`\n\n${"=".repeat(100)}\n== ${title}\n${"=".repeat(100)}\n\n${body}`)
++
++  section(
++    "META",
++    JSON.stringify(
++      {
++        small: input.small ?? false,
++        providerID: input.model.providerID,
++        modelID: input.model.api.id,
++        npm: input.model.api.npm,
++        agent: input.agent.name,
++        agentMode: input.agent.mode,
++        agentHasCustomPrompt: Boolean(input.agent.prompt),
++        sessionID: input.sessionID,
++        isWorkflow: input.isWorkflow,
++        systemBlockCount: prepared.system.length,
++        systemTotalChars: prepared.system.reduce((a, s) => a + s.length, 0),
++        messageCount: prepared.messages.length,
++        toolCount: toolEntries.length,
++      },
++      null,
++      2,
++    ),
++  )
++
++  prepared.system.forEach((block, i) => {
++    section(`SYSTEM BLOCK ${i} (${block.length} chars)`, block)
++  })
++
++  section(
++    "SYSTEM BLOCK 0 — CONSTITUENT PARTS (pre-join, as passed into prepare)",
++    JSON.stringify(
++      {
++        providerPromptOrAgentPrompt: input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model),
++        inputSystem: input.system,
++        userSystem: input.user.system ? [input.user.system] : [],
++      },
++      null,
++      2,
++    ),
++  )
++
++  section(
++    "TOOLS — SUMMARY",
++    toolEntries
++      .map(
++        (t) =>
++          `- ${t.name} (desc ${String(t.description ?? "").length} chars, schema ${JSON.stringify(t.inputSchema ?? {}).length} chars)`,
++      )
++      .join("\n") + `\n\nTOTAL tool bytes: ${JSON.stringify(toolEntries).length}`,
++  )
++
++  section("TOOLS — FULL", JSON.stringify(toolEntries, null, 2))
++  section("MESSAGES", JSON.stringify(prepared.messages, null, 2))
++  section("PARAMS", JSON.stringify(prepared.params, null, 2))
++  section("HEADERS", JSON.stringify(prepared.headers, null, 2))
++  section("MESSAGE TRANSFORM OPTIONS", JSON.stringify(prepared.messageTransformOptions, null, 2))
++
++  const stamp = `${Date.now()}-${input.small ? "small" : "main"}-${input.model.providerID.replace(/\//g, "_")}-${input.model.api.id.replace(/\//g, "_")}`
++  nodeFS.writeFileSync(nodePath.join(DUMP_DIR, `${stamp}.txt`), md.join(""))
++  nodeFS.writeFileSync(
++    nodePath.join(DUMP_DIR, `${stamp}.json`),
++    JSON.stringify(
++      { meta: { small: input.small ?? false, model: input.model.api.id }, ...prepared, tools: toolEntries },
++      null,
++      2,
++    ),
++  )
++
++  if (!input.small) {
++    console.error(`\n[prompt-surgery] dumped ${stamp} to ${DUMP_DIR} — aborting before HTTP request\n`)
++    process.exit(0)
++  }
++}
++// ---- END PROMPT SURGERY ----
++
+ type PrepareInput = {
+   readonly user: SessionV1.User
+   readonly sessionID: string
+@@ -178,7 +271,7 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
+     ? (yield* InstanceState.context).project.id
+     : undefined
+ 
+-  return {
++  const prepared: Prepared = {
+     system,
+     messages,
+     tools: Object.fromEntries(Object.entries(tools).toSorted(([a], [b]) => a.localeCompare(b))),
+@@ -203,6 +296,8 @@ export const prepare = Effect.fn("LLMRequestPrep.prepare")(function* (input: Pre
+       ...headers,
+     },
+   }
++  dumpPrepared(input, prepared)
++  return prepared
+ })
+ 
+ function resolveTools(input: Pick<PrepareInput, "tools" | "agent" | "permission" | "user">) {

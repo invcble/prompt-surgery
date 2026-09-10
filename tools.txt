@@ -1,0 +1,44 @@
+# Claude Code default tools — 24 sent per request, 59,555 B (~16,100 tok), 66.6% of payload.
+# Captured from a real request via the local proxy, not from memory.
+# Mark a leading "-" on any line you want dropped, then hand this back and I'll build --disallowedTools.
+
+# ---- CORE: cutting these breaks normal operation ----------------------------
+Bash                  #  2823 B  ~ 763 tok  Shell commands. Also does ALL searching — this build ships no Grep/Glob.
+Read                  #  1588 B  ~ 429 tok  Read files, images, PDFs, notebooks.
+Edit                  #   964 B  ~ 261 tok  Exact string replacement in a file.
+Write                 #   639 B  ~ 173 tok  Create/overwrite a file.
+Skill                 #  1803 B  ~ 487 tok  Invokes every /command you have: /create-pr, /verify-cov, /merge-main.
+
+# ---- SITUATIONAL BUT CHEAP --------------------------------------------------
+WebFetch              #   745 B  ~ 201 tok  Fetch URL -> markdown -> answer a prompt against it.
+WebSearch             #   839 B  ~ 227 tok  Web search. US-only.
+NotebookEdit          #  1623 B  ~ 439 tok  Single Jupyter cell edit. Dead weight if you touch no .ipynb.
+
+# ---- SUBAGENTS: ruled out by your CLAUDE.md; these four move together --------
+Agent                 #  3139 B  ~ 848 tok  Launch a subagent.
+SendMessage           #  4393 B  ~1187 tok  Message another agent/session: local, cloud, or Remote Control.
+ListAgents            #  1123 B  ~ 304 tok  List who you can SendMessage to. Meaningless without Agent.
+TaskOutput            #  1546 B  ~ 418 tok  Reads background task output. Its own description says DEPRECATED.
+TaskStop              #   805 B  ~ 218 tok  Kill a running background task.
+
+# ---- SCHEDULING / LONG-RUNNING ----------------------------------------------
+Monitor               #  7721 B  ~2087 tok  Background monitor streaming events from a long-running script.
+ScheduleWakeup        #  4886 B  ~1321 tok  Self-pacing for /loop dynamic mode.
+CronCreate            #  3616 B  ~ 977 tok  Schedule a prompt for a future time; recurring or one-shot.
+CronDelete            #   360 B  ~  97 tok  Cancel a cron job.
+CronList              #   231 B  ~  62 tok  List cron jobs in this session.
+PushNotification      #  1764 B  ~ 477 tok  Desktop/phone notification to pull you back to the session.
+
+# ---- GIT WORKTREES ----------------------------------------------------------
+EnterWorktree         #  4013 B  ~1085 tok  Create an isolated git worktree, switch the session into it.
+ExitWorktree          #  2505 B  ~ 677 tok  Leave the worktree, return to the original directory.
+
+# ---- NICHE ------------------------------------------------------------------
+DesignSync            #  8930 B  ~2414 tok  Sync claude.ai/design design-system projects. Biggest single tool.
+ReportFindings        #  2177 B  ~ 588 tok  Structured review findings for the host UI. Used by /code-review.
+ShareOnboardingGuide  #  1297 B  ~ 351 tok  Upload ONBOARDING.md, return a teammate share link.
+
+# ---- JUDGEMENT CALLS --------------------------------------------------------
+# ReportFindings is wired into /code-review, which you do use — cutting it may degrade that skill.
+# Agent + ListAgents + TaskOutput + TaskStop + SendMessage = ~2,975 tok, and they only make sense together.
+# Monitor + DesignSync alone = ~4,500 tok, a third of the total waste, for features unrelated to desmos.

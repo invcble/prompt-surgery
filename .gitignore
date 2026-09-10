@@ -1,0 +1,12 @@
+# opencode checkout — 2.6GB with its own .git. Clone it yourself; see dumps/README.md.
+opencode/
+
+# empty scratch dir opencode was pointed at
+sandbox/
+
+# canary prompts + expect script from the --system-prompt-file flag tests
+flagtest/
+
+.DS_Store
+node_modules/
+*.log
