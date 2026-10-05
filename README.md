@@ -48,7 +48,7 @@ seventeen times over.
 - **Rules with nowhere else to live.** `# Ownership` and `# Do exactly what was asked` are
   dispositions, not preferences. They drift when they arrive as user-turn context.
 - **Drift.** CLAUDE.md is read at turn 1 and then buried. Nothing is lost, but the model starts
-  acting on a recollection of the rules instead of the rules. A hook re-surfaces them every Nth turn.
+  acting on a recollection of the rules instead of the rules. A hook re-surfaces them on a turn interval.
 - **Size, as a bonus.** Two-thirds of a request is tool definitions, 11% is the system prompt, and
   neither is visible from inside a session — hence the measuring tools here.
 
@@ -64,7 +64,7 @@ You need `node` and the `claude` CLI. Regenerating the opencode dumps additional
 | `proxy/server.js` | Fake Anthropic API that logs what Claude Code sends and returns a canned SSE reply. |
 | `proxy/captures/` | Raw captured request bodies. `05` = vanilla, `06` = the command above. |
 | `dumps/` | Real assembled requests from opencode, plus the patch that produced them. See `dumps/README.md`. |
-| `hooks/claudemd-reminder.js` | `UserPromptSubmit` hook that re-surfaces CLAUDE.md every Nth turn. |
+| `hooks/claudemd-reminder.js` | `UserPromptSubmit` hook that appends reminders on per-rule turn intervals. |
 
 opencode is **not** vendored — it is a 2.6GB checkout; `dumps/README.md` has clone/patch/run steps.
 `system.txt` derives from opencode's `anthropic.txt` (https://github.com/sst/opencode), MIT, ©
@@ -144,15 +144,18 @@ Long sessions drift from CLAUDE.md. Nothing is lost — the rules are in context
 were read at turn 1 and are now buried under tool output, so the model acts on a compressed
 recollection instead of the text. Retrieval doesn't fix a salience problem; re-surfacing does.
 
-`hooks/claudemd-reminder.js` appends a reminder to every Nth prompt (default 10, via
-`CLAUDEMD_REMINDER_EVERY`). Config is in [Use it](#use-it) above — note the nested `hooks` array
-there; the flat `{type, command}` form shown in some docs fails settings validation.
+`hooks/claudemd-reminder.js` appends reminders on a turn interval. Cadences live in a `RULES`
+array at the top of the file — each entry is an `{ every, text }` pair, and every rule due on the
+current turn is joined into one injection. Shipped with two: a short style reminder every turn, and
+the CLAUDE.md re-read every 5 turns (override via `CLAUDEMD_REMINDER_EVERY`). Config is in
+[Use it](#use-it) above — note the nested `hooks` array there; the flat `{type, command}` form shown
+in some docs fails settings validation.
 
 The reminder deliberately does **not** gate on "if you don't remember" — self-assessed recall is
 exactly what fails here, since buried content still feels remembered. It gates on action type (code
 change, design decision, code output) and asks for a **grep of the relevant section** rather than a
-full re-read: the desmos CLAUDE.md is 49KB / ~12,400 tokens, so re-reading it every 10 turns would
-cost more than everything the rest of this repo saves.
+full re-read: the desmos CLAUDE.md is 49KB / ~12,400 tokens, so re-reading it on every cadence
+would cost more than everything the rest of this repo saves.
 
 State is one integer per session in `~/.claude/prompt-surgery-turns/<session_id>` — 5 bytes even at
 10,000 turns. Files untouched for 30 days are swept on each run, since a counter only matters to
